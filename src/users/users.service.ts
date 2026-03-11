@@ -268,6 +268,11 @@ export class UsersService {
 
     await this.userRepository.save(user);
 
+    await this.userTokenRepository.update(
+      { user_id: user.id },
+      { is_active: false },
+    );
+
     validReset.used_at = new Date();
 
     await this.passwordResetRepository.save(validReset);
