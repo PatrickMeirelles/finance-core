@@ -1,6 +1,13 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  OneToMany,
+  Index,
+} from 'typeorm';
 import { UserToken } from './user.tokens.entity';
 import { Account } from 'src/accounts/entities/account.entity';
+import { Category } from 'src/categories/entities/category.entity';
 
 @Entity('users')
 export class User {
@@ -11,6 +18,7 @@ export class User {
   name: string;
 
   @Column({ unique: true })
+  @Index()
   email: string;
 
   @Column()
@@ -35,6 +43,9 @@ export class User {
   @OneToMany(() => UserToken, (token) => token.user)
   tokens: UserToken[];
 
-  @OneToMany(() => Account, (account) => account.user_id)
+  @OneToMany(() => Account, (account) => account.user)
   accounts: Account[];
+
+  @OneToMany(() => Category, (category) => category.user)
+  categories: Category[];
 }

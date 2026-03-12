@@ -4,22 +4,29 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { User } from 'src/users/entities/user.entity';
 import { PaymentMethod } from './enum/payment-method.enum';
 
+@Index(['user_id', 'is_active'])
 @Entity('accounts')
 export class Account {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Index(['user_id'])
   @Column()
   user_id: number;
 
   @Column()
   name: string;
 
-  @Column()
+  @Index(['type'])
+  @Column({
+    type: 'enum',
+    enum: PaymentMethod,
+  })
   type: PaymentMethod;
 
   @Column()

@@ -13,12 +13,13 @@ import { databaseConfig } from './config/database';
 import { AuthMiddleware } from './middlewares/auth.middleware';
 import { MailModule } from './mail/mail.module';
 import { AccountsModule } from './accounts/accounts.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.development.local', '.env.development'],
+      envFilePath: ['.env'],
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
@@ -27,6 +28,7 @@ import { AccountsModule } from './accounts/accounts.module';
     UsersModule,
     MailModule,
     AccountsModule,
+    CategoriesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

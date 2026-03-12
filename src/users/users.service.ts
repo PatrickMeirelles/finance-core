@@ -81,7 +81,6 @@ export class UsersService {
       throw new BadRequestException('Invalid email or password');
     }
 
-    console.log('User authenticated successfully');
     const { accessToken, refreshToken } = await createToken(
       user.id,
       user.email,

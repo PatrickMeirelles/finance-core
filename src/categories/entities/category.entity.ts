@@ -1,34 +1,38 @@
+import { User } from 'src/users/entities/user.entity';
 import {
   Entity,
   Column,
   PrimaryGeneratedColumn,
-  JoinColumn,
   ManyToOne,
+  JoinColumn,
   Index,
 } from 'typeorm';
-import { User } from './user.entity';
+import { IncomeExpensive } from './enum/income-expensive.enum';
 
-@Entity('users_tokens')
-export class UserToken {
+@Index(['user_id', 'type'])
+@Entity('categories')
+export class Category {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Index(['user_id', 'is_active'])
+  @Index(['user_id'])
   @Column()
   user_id: number;
 
   @Column()
-  access_token: string;
+  name: string;
 
-  @Index(['expires_at_access_token'])
-  @Column()
-  expires_at_access_token: Date;
+  @Column({
+    type: 'enum',
+    enum: IncomeExpensive,
+  })
+  type: IncomeExpensive;
 
-  @Column()
-  refresh_token: string;
+  @Column({ nullable: true })
+  icon: string;
 
-  @Column()
-  expires_at_refresh_token: Date;
+  @Column({ nullable: true })
+  color: string;
 
   @Column({ default: true })
   is_active: boolean;
@@ -43,7 +47,7 @@ export class UserToken {
   })
   updated_at: Date;
 
-  @ManyToOne(() => User, (user) => user.tokens)
+  @ManyToOne(() => User, (user) => user.categories)
   @JoinColumn({ name: 'user_id' })
   user: User;
 }
