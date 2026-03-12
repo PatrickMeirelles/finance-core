@@ -16,7 +16,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
+    let message = 'internal server error';
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -34,6 +34,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     console.error('Error:', exception);
 
     response.status(status).json({
+      success: false,
       statusCode: status,
       message,
       path: request.url,

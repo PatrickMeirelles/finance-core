@@ -31,6 +31,7 @@ export class AccountsService {
         name: createAccountDto.name,
         user_id: userId,
         type: createAccountDto.type,
+        is_active: true,
       },
     });
     if (checkAccount) {
