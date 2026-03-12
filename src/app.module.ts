@@ -12,6 +12,7 @@ import { UsersModule } from './users/users.module';
 import { databaseConfig } from './config/database';
 import { AuthMiddleware } from './middlewares/auth.middleware';
 import { MailModule } from './mail/mail.module';
+import { AccountsModule } from './accounts/accounts.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { MailModule } from './mail/mail.module';
     }),
     UsersModule,
     MailModule,
+    AccountsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,5 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm';
 import { UserToken } from './user.tokens.entity';
+import { Account } from 'src/accounts/entities/account.entity';
 
 @Entity('users')
 export class User {
@@ -33,4 +34,7 @@ export class User {
 
   @OneToMany(() => UserToken, (token) => token.user)
   tokens: UserToken[];
+
+  @OneToMany(() => Account, (account) => account.user_id)
+  accounts: Account[];
 }

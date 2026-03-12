@@ -11,11 +11,12 @@ import {
 } from 'src/common/utils/hash.util';
 import { UserToken } from './entities/user.tokens.entity';
 import { LoginUserDto } from './dto/login-user-dto';
-import { JwtService } from '@nestjs/jwt';
 import { MailService } from 'src/mail/mail.service';
 import { resetPasswordTemplate } from '../mail/templates/reset-password.template';
 import { PasswordReset } from './entities/password-reset.entity';
 import * as crypto from 'crypto';
+import { createToken } from 'src/common/utils/jwt.util';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class UsersService {
@@ -26,8 +27,8 @@ export class UsersService {
     private userTokenRepository: Repository<UserToken>,
     @InjectRepository(PasswordReset)
     private passwordResetRepository: Repository<PasswordReset>,
-    private jwtService: JwtService,
     private mailService: MailService,
+    private jwtService: JwtService,
   ) {}
 
   async create(dto: CreateUserDto) {
@@ -47,9 +48,11 @@ export class UsersService {
     });
 
     const userCreated = await this.userRepository.save(user);
-    const { accessToken, refreshToken } = await this.createToken(
+    const { accessToken, refreshToken } = await createToken(
       userCreated.id,
       userCreated.email,
+      this.jwtService,
+      this.userTokenRepository,
     );
 
     return {
@@ -78,9 +81,12 @@ export class UsersService {
       throw new BadRequestException('Invalid email or password');
     }
 
-    const { accessToken, refreshToken } = await this.createToken(
+    console.log('User authenticated successfully');
+    const { accessToken, refreshToken } = await createToken(
       user.id,
       user.email,
+      this.jwtService,
+      this.userTokenRepository,
     );
 
     return {
@@ -119,42 +125,6 @@ export class UsersService {
     return { message: 'Logged out successfully' };
   }
 
-  async createToken(userId: number, email: string) {
-    const payload = { sub: userId, email };
-    const accessToken = await this.jwtService.signAsync(payload, {
-      expiresIn: '15m',
-    });
-
-    const refreshToken = await this.jwtService.signAsync(payload, {
-      expiresIn: '7d',
-    });
-
-    const hashedRefreshToken = await hashPassword(refreshToken);
-
-    const expiresAtAccessToken = new Date();
-    expiresAtAccessToken.setMinutes(expiresAtAccessToken.getMinutes() + 15);
-
-    const expiresAtRefreshToken = new Date();
-    expiresAtRefreshToken.setDate(expiresAtRefreshToken.getDate() + 7);
-
-    await this.userTokenRepository.update(
-      { user_id: userId, is_active: true },
-      { is_active: false },
-    );
-
-    const userToken = this.userTokenRepository.create({
-      user_id: userId,
-      access_token: accessToken,
-      expires_at_access_token: expiresAtAccessToken,
-      refresh_token: hashedRefreshToken,
-      expires_at_refresh_token: expiresAtRefreshToken,
-      is_active: true,
-    });
-
-    await this.userTokenRepository.save(userToken);
-    return { accessToken, refreshToken };
-  }
-
   async update(id: number, updateUserDto: UpdateUserDto) {
     await this.userRepository.update(id, {
       name: updateUserDto.name,
@@ -187,8 +157,12 @@ export class UsersService {
       throw new BadRequestException('Invalid refresh token');
     }
 
-    const { accessToken, refreshToken: newRefreshToken } =
-      await this.createToken(validToken.user_id, validToken.user.email);
+    const { accessToken, refreshToken: newRefreshToken } = await createToken(
+      validToken.user_id,
+      validToken.user.email,
+      this.jwtService,
+      this.userTokenRepository,
+    );
 
     return {
       access_token: accessToken,
