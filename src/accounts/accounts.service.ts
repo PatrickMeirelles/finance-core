@@ -49,7 +49,7 @@ export class AccountsService {
 
   async findAll(userId: number) {
     return await this.accountRepository.find({
-      where: { user_id: userId },
+      where: { user_id: userId, is_active: true },
     });
   }
 
