@@ -29,4 +29,5 @@ export class CreateUserDto {
   fullName: string;
 
   isActive: boolean;
+  initializeWithDefaultData: boolean;
 }

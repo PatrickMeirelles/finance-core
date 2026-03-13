@@ -7,6 +7,8 @@ import { UserToken } from './entities/user.tokens.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { MailModule } from 'src/mail/mail.module';
 import { PasswordReset } from './entities/password-reset.entity';
+import { AccountsModule } from 'src/accounts/accounts.module';
+import { CategoriesModule } from 'src/categories/categories.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { PasswordReset } from './entities/password-reset.entity';
     JwtModule.register({
       secret: 'sua_palavra_secreta_super_segura',
     }),
+    AccountsModule,
+    CategoriesModule,
     MailModule,
   ],
   controllers: [UsersController],

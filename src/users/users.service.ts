@@ -17,6 +17,9 @@ import { PasswordReset } from './entities/password-reset.entity';
 import * as crypto from 'crypto';
 import { createToken } from 'src/common/utils/jwt.util';
 import { JwtService } from '@nestjs/jwt';
+import { Account } from '../accounts/entities/account.entity';
+import { Category } from 'src/categories/entities/category.entity';
+import { defaultValues } from './common/default-values';
 
 @Injectable()
 export class UsersService {
@@ -27,9 +30,36 @@ export class UsersService {
     private userTokenRepository: Repository<UserToken>,
     @InjectRepository(PasswordReset)
     private passwordResetRepository: Repository<PasswordReset>,
+    @InjectRepository(Account)
+    private accountRepository: Repository<Account>,
+    @InjectRepository(Category)
+    private categoryRepository: Repository<Category>,
     private mailService: MailService,
     private jwtService: JwtService,
   ) {}
+
+  private async createDefaultData(userId: number) {
+    const accounts = this.accountRepository.create(
+      defaultValues.accounts.map((account) => ({
+        ...account,
+        user_id: userId,
+      })),
+    );
+
+    const categories = this.categoryRepository.create(
+      defaultValues.categories.map((category) => ({
+        ...category,
+        user_id: userId,
+      })),
+    );
+
+    await Promise.all([
+      this.accountRepository.save(accounts),
+      this.categoryRepository.save(categories),
+    ]);
+
+    return { accounts, categories };
+  }
 
   async create(dto: CreateUserDto) {
     const hashedPassword = await hashPassword(dto.password);
@@ -55,14 +85,21 @@ export class UsersService {
       this.userTokenRepository,
     );
 
+    let hasToCreateDefaultData:
+      | { accounts: Account[]; categories: Category[] }
+      | undefined;
+    if (dto.initializeWithDefaultData) {
+      hasToCreateDefaultData = await this.createDefaultData(userCreated.id);
+    }
     return {
       id: userCreated.id,
       name: userCreated.name,
       email: userCreated.email,
       fullName: userCreated.full_name,
       createdAt: userCreated.created_at,
-      access_token: accessToken,
-      refresh_token: refreshToken,
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      defaultDataCreated: hasToCreateDefaultData,
     };
   }
 
@@ -94,8 +131,8 @@ export class UsersService {
       email: user.email,
       fullName: user.full_name,
       createdAt: user.created_at,
-      access_token: accessToken,
-      refresh_token: refreshToken,
+      accessToken: accessToken,
+      refreshToken: refreshToken,
     };
   }
 
@@ -164,8 +201,8 @@ export class UsersService {
     );
 
     return {
-      access_token: accessToken,
-      refresh_token: newRefreshToken,
+      accessToken: accessToken,
+      refreshToken: newRefreshToken,
     };
   }
 
