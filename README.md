@@ -1,98 +1,197 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# finance-core
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend (API) para um sistema de finanças pessoais, construído com **NestJS**, **TypeORM** e autenticação baseada em **JWT (access/refresh)**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Principais tecnologias
 
-## Description
+- **Node.js + TypeScript**
+- **NestJS**
+- **TypeORM**
+- **Banco**:
+  - **development**: SQLite (`better-sqlite3`) com arquivo local `database.sqlite`
+  - **outros ambientes** (ex.: production): **Postgres**
+- **Auth**: `Authorization: Bearer <accessToken>` via middleware global
+- **E-mail**: Nodemailer com **conta de teste** (gera URL de preview no console)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Pré-requisitos
 
-## Project setup
+- **Node.js** (recomendado: versão LTS recente)
+- **pnpm**
+- (Opcional) **Docker + Docker Compose** (se for usar Postgres localmente)
+
+## Configuração de ambiente
+
+Existe um exemplo em `.env.example`. Para rodar localmente:
 
 ```bash
-$ pnpm install
+cp .env.example .env
 ```
 
-## Compile and run the project
+### Variáveis suportadas
+
+- **NODE_ENV**: controla qual banco será usado
+  - `development` → SQLite (`database.sqlite`)
+  - qualquer outro valor → Postgres
+- **PORT** (opcional): porta do servidor (padrão `3000`)
+- **DB_HOST / DB_PORT / DB_USER / DB_PASS / DB_NAME**: apenas quando usar Postgres
+
+> Importante: o projeto está configurado com `synchronize: true` no TypeORM. Isso cria/atualiza tabelas automaticamente ao subir a aplicação (útil para desenvolvimento, mas exige cuidado em produção).
+
+## Como rodar localmente
+
+### Opção A (mais simples): SQLite (development)
+
+1) Ajuste o `.env`:
 
 ```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+NODE_ENV=development
 ```
 
-## Run tests
+2) Instale dependências e rode:
 
 ```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+pnpm install
+pnpm start:dev
 ```
 
-## Deployment
+- O arquivo `database.sqlite` será criado na raiz do projeto.
+- API disponível em `http://localhost:3000`.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### Opção B: Postgres via Docker (modo “production” do banco)
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+1) Suba o Postgres:
 
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+docker compose up -d
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+2) Ajuste o `.env` (você pode usar o `.env.example` como base). Exemplo:
 
-## Resources
+```bash
+NODE_ENV=production
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=finance
+DB_PASS=finance
+DB_NAME=finance
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+3) Instale dependências e rode:
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+pnpm install
+pnpm start:dev
+```
 
-## Support
+## Scripts úteis
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+- **Rodar em modo dev (watch)**:
 
-## Stay in touch
+```bash
+pnpm start:dev
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+- **Build**:
 
-## License
+```bash
+pnpm build
+```
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- **Start “prod” (a partir de `dist/`)**:
+
+```bash
+pnpm start:prod
+```
+
+- **Testes**:
+
+```bash
+pnpm test
+pnpm test:e2e
+pnpm test:cov
+```
+
+- **Formatar código**:
+
+```bash
+pnpm format
+```
+
+- **Lint**:
+
+```bash
+pnpm lint
+```
+
+## Autenticação (como chamar endpoints protegidos)
+
+Quase todas as rotas exigem header:
+
+```text
+Authorization: Bearer <accessToken>
+```
+
+Rotas **públicas** (não passam pelo middleware de auth):
+
+- `POST /users/register`
+- `POST /users/login`
+- `POST /users/forgot-password`
+- `POST /users/reset-password`
+
+O endpoint `POST /users/refresh` existe e normalmente deve ser chamado com `Authorization` (porque não está excluído do middleware).
+
+## Rotas principais
+
+### Usuários
+
+- `POST /users/register`
+- `POST /users/login`
+- `POST /users/refresh`
+- `GET /users/me`
+- `PATCH /users/update`
+- `POST /users/logout`
+- `POST /users/forgot-password`
+- `POST /users/reset-password`
+
+### Contas
+
+- `POST /accounts/create`
+- `GET /accounts`
+- `GET /accounts/:id`
+- `PATCH /accounts/update/:id`
+- `DELETE /accounts/:id`
+
+### Categorias
+
+- `POST /categories/create`
+- `GET /categories`
+- `GET /categories/:id`
+- `PATCH /categories/update/:id`
+- `DELETE /categories/:id`
+
+### Transações
+
+- `POST /transactions/create`
+- `GET /transactions` (aceita filtros via querystring; ver DTO `GetTransactionsDto`)
+- `GET /transactions/:id`
+- `PATCH /transactions/:id`
+- `DELETE /transactions/:installmentsGroupId`
+
+## E-mail (reset de senha)
+
+O fluxo de “esqueci minha senha” envia um e-mail usando Nodemailer com **conta de teste**; ao disparar o envio, a aplicação imprime no console uma linha com:
+
+- `Email preview: <url>`
+
+Essa URL abre uma prévia do e-mail em ambiente de teste (sem precisar configurar SMTP real).
+
+> Observação: o link de reset gerado hoje aponta para `http://localhost:3000/reset-password?token=...`. Se você tiver um frontend separado, provavelmente vai querer ajustar esse host/porta futuramente.
+
+## Troubleshooting rápido
+
+- **401 “Authorization header not provided”**: faltou mandar `Authorization: Bearer ...`.
+- **“Invalid token”**: token expirou, foi revogado (logout) ou é de outro usuário/ambiente.
+- **Postgres não conecta**:
+  - confirme `docker compose ps`
+  - confira `DB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME` no `.env`
+  - verifique se `NODE_ENV` não está `development` (senão ele usa SQLite)
