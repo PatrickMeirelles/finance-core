@@ -41,13 +41,13 @@ cp .env.example .env
 
 ### Opção A (mais simples): SQLite (development)
 
-1) Ajuste o `.env`:
+1. Ajuste o `.env`:
 
 ```bash
 NODE_ENV=development
 ```
 
-2) Instale dependências e rode:
+2. Instale dependências e rode:
 
 ```bash
 pnpm install
@@ -59,13 +59,13 @@ pnpm start:dev
 
 ### Opção B: Postgres via Docker (modo “production” do banco)
 
-1) Suba o Postgres:
+1. Suba o Postgres:
 
 ```bash
 docker compose up -d
 ```
 
-2) Ajuste o `.env` (você pode usar o `.env.example` como base). Exemplo:
+2. Ajuste o `.env` (você pode usar o `.env.example` como base). Exemplo:
 
 ```bash
 NODE_ENV=production
@@ -76,7 +76,7 @@ DB_PASS=finance
 DB_NAME=finance
 ```
 
-3) Instale dependências e rode:
+3. Instale dependências e rode:
 
 ```bash
 pnpm install
@@ -185,7 +185,7 @@ O fluxo de “esqueci minha senha” envia um e-mail usando Nodemailer com **con
 
 Essa URL abre uma prévia do e-mail em ambiente de teste (sem precisar configurar SMTP real).
 
-> Observação: o link de reset gerado hoje aponta para `http://localhost:3000/reset-password?token=...`. Se você tiver um frontend separado, provavelmente vai querer ajustar esse host/porta futuramente.
+> Observação: o link de reset gerado hoje aponta para `http://localhost:3000/reset-password?token=...`
 
 ## Troubleshooting rápido
 
