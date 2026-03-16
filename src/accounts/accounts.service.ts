@@ -5,19 +5,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Account } from './entities/account.entity';
 import { Repository } from 'typeorm';
 import { User } from 'src/users/entities/user.entity';
+import { AccountBalanceService } from './accounts-balance.service';
 
 @Injectable()
 export class AccountsService {
   constructor(
     @InjectRepository(Account)
     private accountRepository: Repository<Account>,
+    private readonly accountBalanceService: AccountBalanceService,
   ) {}
 
   normalizeAccountData(dto: CreateAccountDto | UpdateAccountDto) {
     return {
       name: dto.name,
       type: dto.type,
-      balance: dto.balance ? dto.balance : 0,
       closing_day: dto.closing_day,
       due_day: dto.due_day,
       credit_limit: dto.credit_limit,
@@ -48,17 +49,38 @@ export class AccountsService {
   }
 
   async findAll(userId: number) {
-    return await this.accountRepository.find({
+    const accounts = await this.accountRepository.find({
       where: { user_id: userId, is_active: true },
     });
+
+    const accountIds = accounts.map((a) => a.id);
+
+    const balances =
+      await this.accountBalanceService.getBalanceByAccountIds(accountIds);
+
+    return accounts.map((account) => ({
+      ...account,
+      balance: balances.get(account.id) ?? 0,
+    }));
   }
 
-  async findOne(id: number) {
-    const getAccount = await this.accountRepository.findOne({ where: { id } });
-    if (!getAccount) {
+  async findOne(userId: number, id: number) {
+    const account = await this.accountRepository.findOne({
+      where: { id, user_id: userId, is_active: true },
+    });
+
+    if (!account) {
       throw new BadRequestException('Account not found');
     }
-    return getAccount;
+
+    const balance = await this.accountBalanceService.getBalanceByAccountId(
+      account.id,
+    );
+
+    return {
+      ...account,
+      balance,
+    };
   }
 
   async update(id: number, updateAccountDto: UpdateAccountDto) {

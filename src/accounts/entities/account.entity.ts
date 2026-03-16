@@ -29,9 +29,6 @@ export class Account {
   })
   type: PaymentMethod;
 
-  @Column()
-  balance: number;
-
   @Column({ default: true })
   is_active: boolean;
 

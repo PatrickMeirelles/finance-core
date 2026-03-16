@@ -31,8 +31,8 @@ export class AccountsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.accountsService.findOne(+id);
+  findOne(@CurrentUser() currentUser: User, @Param('id') id: string) {
+    return this.accountsService.findOne(currentUser.id, +id);
   }
 
   @Patch('update/:id')

@@ -1,5 +1,5 @@
 import { IsEnum, IsNotEmpty, Length } from 'class-validator';
-import { IncomeExpensive } from '../entities/enum/income-expensive.enum';
+import { IncomeExpensive } from 'src/common/enums/income-expensive.enum';
 
 export class CreateCategoryDto {
   @IsNotEmpty()

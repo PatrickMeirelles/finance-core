@@ -1,20 +1,18 @@
 import { PaymentMethod } from 'src/accounts/entities/enum/payment-method.enum';
-import { IncomeExpensive } from 'src/categories/entities/enum/income-expensive.enum';
+import { IncomeExpensive } from 'src/common/enums/income-expensive.enum';
 
 export const defaultValues = {
   accounts: [
     {
-      name: 'Nubank',
+      name: 'Conta Corrente',
       type: PaymentMethod.CHECKING_ACCOUNT,
-      balance: 0,
       closing_day: 12,
       due_day: 20,
       credit_limit: 5000,
     },
     {
-      name: 'PicPay',
+      name: 'Carteira',
       type: PaymentMethod.CASH,
-      balance: 1000,
     },
   ],
   categories: [

@@ -10,8 +10,6 @@ export class CreateAccountDto {
     message: `Type must be one of the following: ${Object.values(PaymentMethod).join(', ')}`,
   })
   type: PaymentMethod;
-
-  balance: number;
   closing_day?: number;
   due_day?: number;
   credit_limit?: number;

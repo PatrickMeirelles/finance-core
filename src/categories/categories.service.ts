@@ -48,9 +48,9 @@ export class CategoriesService {
     });
   }
 
-  async findOne(id: number) {
+  async findOne(userId: number, id: number) {
     const getCategory = await this.categoryRepository.findOne({
-      where: { id, is_active: true },
+      where: { id, is_active: true, user_id: userId },
     });
     if (!getCategory) {
       throw new BadRequestException('Category not found');

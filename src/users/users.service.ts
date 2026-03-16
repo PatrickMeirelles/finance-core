@@ -19,7 +19,7 @@ import { createToken } from 'src/common/utils/jwt.util';
 import { JwtService } from '@nestjs/jwt';
 import { Account } from '../accounts/entities/account.entity';
 import { Category } from 'src/categories/entities/category.entity';
-import { defaultValues } from './common/default-values';
+import { defaultValues } from './common/default-initial-values';
 
 @Injectable()
 export class UsersService {

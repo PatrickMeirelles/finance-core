@@ -7,7 +7,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { IncomeExpensive } from './enum/income-expensive.enum';
+import { IncomeExpensive } from 'src/common/enums/income-expensive.enum';
 
 @Index(['user_id', 'type'])
 @Entity('categories')
