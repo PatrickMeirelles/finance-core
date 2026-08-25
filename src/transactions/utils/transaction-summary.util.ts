@@ -25,8 +25,8 @@ export async function getTransactionSummary(
 
   const result = await query.getRawOne<TransactionSummaryRaw>();
 
-  const income = Number(result?.income ?? 0) / 100;
-  const expense = Number(result?.expense ?? 0) / 100;
+  const income = Number(result?.income ?? 0);
+  const expense = Number(result?.expense ?? 0);
 
   return {
     income,

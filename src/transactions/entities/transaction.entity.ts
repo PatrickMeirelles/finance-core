@@ -29,13 +29,12 @@ export class Transaction {
   @Column()
   category_id: number;
 
-  @Column({
-    type: 'integer',
-    transformer: {
-      to: (value: number) => value * 100,
-      from: (value: number) => value / 100,
-    },
-  })
+  /**
+   * Value in cents. The all API (entrada, saída, filtros e agregações) uses
+   * cents as the unit, to never depend on floating-point numbers for money.
+   * E.g.: R$ 12,34 => 1234.
+   */
+  @Column({ type: 'integer' })
   value: number;
 
   @Column({ type: 'enum', enum: IncomeExpensive })

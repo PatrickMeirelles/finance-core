@@ -8,7 +8,7 @@ export const defaultValues = {
       type: PaymentMethod.CHECKING_ACCOUNT,
       closing_day: 12,
       due_day: 20,
-      credit_limit: 5000,
+      credit_limit: 500000,
     },
     {
       name: 'Carteira',

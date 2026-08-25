@@ -19,6 +19,7 @@ export class CreateTransactionDto {
   @IsInt()
   categoryId: number;
 
+  /** Value in cents. E.g.: R$ 12,34 => 1234. */
   @IsNotEmpty()
   @IsInt()
   @IsPositive()

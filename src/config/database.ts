@@ -25,5 +25,8 @@ export const databaseConfig = (
     database: configService.get<string>('DB_NAME'),
     synchronize: true,
     autoLoadEntities: true,
+    ssl: {
+      rejectUnauthorized: true,
+    },
   };
 };

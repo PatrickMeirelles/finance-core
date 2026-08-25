@@ -38,7 +38,7 @@ export class AccountBalanceService {
     const map = new Map<number, number>();
 
     balances.forEach((b) => {
-      map.set(Number(b.accountId), Number(b.balance) / 100);
+      map.set(Number(b.accountId), Number(b.balance));
     });
 
     return map;
@@ -62,6 +62,6 @@ export class AccountBalanceService {
       .where('transaction.account_id = :accountId', { accountId })
       .getRawOne<{ balance: string }>();
 
-    return Number(balance?.balance ?? 0) / 100;
+    return Number(balance?.balance ?? 0);
   }
 }
