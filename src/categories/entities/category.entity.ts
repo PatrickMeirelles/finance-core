@@ -8,6 +8,7 @@ import {
   Index,
 } from 'typeorm';
 import { IncomeExpensive } from 'src/common/enums/income-expensive.enum';
+import { enumColumnType } from 'src/common/utils/enum-column.util';
 
 @Index(['user_id', 'type'])
 @Entity('categories')
@@ -23,7 +24,7 @@ export class Category {
   name: string;
 
   @Column({
-    type: 'enum',
+    type: enumColumnType(),
     enum: IncomeExpensive,
   })
   type: IncomeExpensive;

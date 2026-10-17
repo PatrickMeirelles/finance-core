@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { TransactionStatus } from './enum/transactions-status.enum';
 import { IncomeExpensive } from 'src/common/enums/income-expensive.enum';
+import { enumColumnType } from 'src/common/utils/enum-column.util';
 
 @Index(['user_id', 'transaction_date'])
 @Index(['account_id'])
@@ -37,10 +38,10 @@ export class Transaction {
   @Column({ type: 'integer' })
   value: number;
 
-  @Column({ type: 'enum', enum: IncomeExpensive })
+  @Column({ type: enumColumnType(), enum: IncomeExpensive })
   type: IncomeExpensive;
 
-  @Column({ type: 'enum', enum: TransactionStatus })
+  @Column({ type: enumColumnType(), enum: TransactionStatus })
   status: TransactionStatus;
 
   @Column()

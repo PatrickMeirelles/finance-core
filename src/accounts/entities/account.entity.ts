@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { User } from 'src/users/entities/user.entity';
 import { PaymentMethod } from './enum/payment-method.enum';
+import { enumColumnType } from 'src/common/utils/enum-column.util';
 
 @Index(['user_id', 'is_active'])
 @Entity('accounts')
@@ -24,7 +25,7 @@ export class Account {
 
   @Index(['type'])
   @Column({
-    type: 'enum',
+    type: enumColumnType(),
     enum: PaymentMethod,
   })
   type: PaymentMethod;

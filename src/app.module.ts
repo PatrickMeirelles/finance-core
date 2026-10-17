@@ -44,6 +44,7 @@ export class AppModule implements NestModule {
         { path: 'users/register', method: RequestMethod.POST },
         { path: 'users/forgot-password', method: RequestMethod.POST },
         { path: 'users/reset-password', method: RequestMethod.POST },
+        { path: 'users/refresh', method: RequestMethod.POST },
       )
       .forRoutes('*');
   }
