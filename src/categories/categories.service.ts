@@ -12,7 +12,7 @@ export class CategoriesService {
     private categoryRepository: Repository<Category>,
   ) {}
 
-  normalizeAccountData(dto: CreateCategoryDto | UpdateCategoryDto) {
+  normalizeCategoryData(dto: CreateCategoryDto | UpdateCategoryDto) {
     return {
       name: dto.name,
       type: dto.type,
@@ -36,7 +36,7 @@ export class CategoriesService {
       );
     }
     const category: Partial<Category> = this.categoryRepository.create({
-      ...createCategoryDto,
+      ...this.normalizeCategoryData(createCategoryDto),
       user_id: userId,
     });
     return this.categoryRepository.save(category);
@@ -58,34 +58,30 @@ export class CategoriesService {
     return getCategory;
   }
 
-  async update(id: number, updateAccountDto: UpdateCategoryDto) {
-    const getCategory = await this.categoryRepository.findOne({
-      where: { id },
-    });
-    if (!getCategory) {
-      throw new BadRequestException('Category not found');
-    }
+  async update(
+    userId: number,
+    id: number,
+    updateCategoryDto: UpdateCategoryDto,
+  ) {
+    await this.findOne(userId, id);
 
     const categoryData = await this.categoryRepository.update(
-      id,
-      this.normalizeAccountData(updateAccountDto),
+      { id, user_id: userId },
+      this.normalizeCategoryData(updateCategoryDto),
     );
 
     if (categoryData.affected === 0) {
       throw new BadRequestException('Category not found or no changes made');
     }
-    await this.categoryRepository.findOne({ where: { id } });
     return { message: 'Category updated successfully' };
   }
 
-  async remove(id: number) {
-    const getCategory = await this.categoryRepository.findOne({
-      where: { id },
-    });
-    if (!getCategory) {
-      throw new BadRequestException('Category not found');
-    }
-    await this.categoryRepository.update(id, { is_active: false });
+  async remove(userId: number, id: number) {
+    await this.findOne(userId, id);
+    await this.categoryRepository.update(
+      { id, user_id: userId },
+      { is_active: false },
+    );
     return { message: 'Category removed successfully' };
   }
 }

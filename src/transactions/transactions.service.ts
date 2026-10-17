@@ -55,8 +55,10 @@ export class TransactionsService {
       const transactionRepository =
         queryRunner.manager.getRepository(Transaction);
 
+      // Both accounts must belong to the caller; ids from other users are
+      // treated exactly like ids that do not exist.
       const account = await accountRepository.findOne({
-        where: { id: dto.accountId },
+        where: { id: dto.accountId, user_id: userId, is_active: true },
         ...pessimisticWriteLock<Account>(this.dataSource),
       });
 
@@ -65,10 +67,17 @@ export class TransactionsService {
       }
 
       if (dto.type === IncomeExpensive.TRANSFER && dto.destinationAcccountId) {
-        await accountRepository.findOne({
-          where: { id: dto.destinationAcccountId },
+        const destination = await accountRepository.findOne({
+          where: {
+            id: dto.destinationAcccountId,
+            user_id: userId,
+            is_active: true,
+          },
           ...pessimisticWriteLock<Account>(this.dataSource),
         });
+        if (!destination) {
+          throw new BadRequestException('Destination account not found');
+        }
       }
 
       const groupId = randomUUID();
@@ -90,7 +99,7 @@ export class TransactionsService {
               ...dto,
               ...installment,
               installmentsGroupId: groupId,
-            } as CreateTransactionDto),
+            }),
           ),
         );
       } else {
@@ -99,7 +108,7 @@ export class TransactionsService {
             TransactionMapper.toEntity(userId, {
               ...dto,
               installmentsGroupId: groupId,
-            } as CreateTransactionDto),
+            }),
           ),
         );
       }
@@ -191,9 +200,15 @@ export class TransactionsService {
           is_active: true,
         };
 
+    await this.assertOwnedTargets(
+      userId,
+      updateTransactionDto.accountId,
+      updateTransactionDto.categoryId,
+    );
+
     const result = await this.transactionRepository.update(
       whereCondition,
-      updateTransactionDto,
+      TransactionMapper.toUpdateColumns(updateTransactionDto),
     );
 
     if (!result.affected) {
@@ -207,6 +222,28 @@ export class TransactionsService {
         ? 'Installments updated successfully'
         : 'Transaction updated successfully',
     };
+  }
+
+  /** Account and category used by an update must belong to the caller. */
+  private async assertOwnedTargets(
+    userId: number,
+    accountId: number,
+    categoryId: number,
+  ) {
+    const [account, category] = await Promise.all([
+      this.accountRepository.findOne({
+        where: { id: accountId, user_id: userId, is_active: true },
+      }),
+      this.categoryRepository.findOne({
+        where: { id: categoryId, user_id: userId, is_active: true },
+      }),
+    ]);
+    if (!account) {
+      throw new BadRequestException('Account not found');
+    }
+    if (!category) {
+      throw new BadRequestException('Category not found');
+    }
   }
 
   private async assertImportTargets(
@@ -358,15 +395,19 @@ export class TransactionsService {
     };
   }
 
-  async remove(installmentsGroupId: string) {
+  async remove(userId: number, installmentsGroupId: string) {
     const findTransactions = await this.transactionRepository.find({
-      where: { installments_group_id: installmentsGroupId, is_active: true },
+      where: {
+        installments_group_id: installmentsGroupId,
+        user_id: userId,
+        is_active: true,
+      },
     });
-    if (!findTransactions) {
+    if (findTransactions.length === 0) {
       throw new BadRequestException('Transactions not found');
     }
     await this.transactionRepository.update(
-      { installments_group_id: installmentsGroupId },
+      { installments_group_id: installmentsGroupId, user_id: userId },
       {
         is_active: false,
       },

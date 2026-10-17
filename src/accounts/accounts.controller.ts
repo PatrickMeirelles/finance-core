@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { AccountsService } from './accounts.service';
 import { CreateAccountDto } from './dto/create-account.dto';
@@ -31,17 +32,27 @@ export class AccountsController {
   }
 
   @Get(':id')
-  findOne(@CurrentUser() currentUser: User, @Param('id') id: string) {
-    return this.accountsService.findOne(currentUser.id, +id);
+  findOne(
+    @CurrentUser() currentUser: User,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.accountsService.findOne(currentUser.id, id);
   }
 
   @Patch('update/:id')
-  update(@Param('id') id: string, @Body() updateAccountDto: UpdateAccountDto) {
-    return this.accountsService.update(+id, updateAccountDto);
+  update(
+    @CurrentUser() currentUser: User,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateAccountDto: UpdateAccountDto,
+  ) {
+    return this.accountsService.update(currentUser.id, id, updateAccountDto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.accountsService.remove(+id);
+  remove(
+    @CurrentUser() currentUser: User,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.accountsService.remove(currentUser.id, id);
   }
 }

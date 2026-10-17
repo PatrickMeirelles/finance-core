@@ -22,7 +22,8 @@ export class User {
   @Index()
   email: string;
 
-  @Column()
+  /** Never loaded by default: login selects it explicitly. */
+  @Column({ select: false })
   password: string;
 
   @Column()

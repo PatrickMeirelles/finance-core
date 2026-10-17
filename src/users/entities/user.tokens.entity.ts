@@ -8,6 +8,10 @@ import {
 } from 'typeorm';
 import { User } from './user.entity';
 
+/**
+ * One row per session. Only digests of the tokens are stored, so a database
+ * leak does not hand out usable credentials.
+ */
 @Entity('users_tokens')
 export class UserToken {
   @PrimaryGeneratedColumn()
@@ -17,15 +21,17 @@ export class UserToken {
   @Column()
   user_id: number;
 
+  @Index({ unique: true })
   @Column()
-  access_token: string;
+  access_token_hash: string;
 
   @Index(['expires_at_access_token'])
   @Column()
   expires_at_access_token: Date;
 
+  @Index({ unique: true })
   @Column()
-  refresh_token: string;
+  refresh_token_hash: string;
 
   @Column()
   expires_at_refresh_token: Date;

@@ -83,28 +83,35 @@ export class AccountsService {
     };
   }
 
-  async update(id: number, updateAccountDto: UpdateAccountDto) {
-    const getAccount = await this.accountRepository.findOne({ where: { id } });
-    if (!getAccount) {
+  /** Loads an account only if it belongs to `userId`; 400 otherwise. */
+  private async getOwned(userId: number, id: number): Promise<Account> {
+    const account = await this.accountRepository.findOne({
+      where: { id, user_id: userId, is_active: true },
+    });
+    if (!account) {
       throw new BadRequestException('Account not found');
     }
+    return account;
+  }
+
+  async update(userId: number, id: number, updateAccountDto: UpdateAccountDto) {
+    await this.getOwned(userId, id);
     const accountData = await this.accountRepository.update(
-      id,
+      { id, user_id: userId },
       this.normalizeAccountData(updateAccountDto),
     );
     if (accountData.affected === 0) {
       throw new BadRequestException('Account not found or no changes made');
     }
-    await this.accountRepository.findOne({ where: { id } });
     return { message: 'Account updated successfully' };
   }
 
-  async remove(id: number) {
-    const getAccount = await this.accountRepository.findOne({ where: { id } });
-    if (!getAccount) {
-      throw new BadRequestException('Account not found');
-    }
-    await this.accountRepository.update(id, { is_active: false });
+  async remove(userId: number, id: number) {
+    await this.getOwned(userId, id);
+    await this.accountRepository.update(
+      { id, user_id: userId },
+      { is_active: false },
+    );
     return { message: 'Account removed successfully' };
   }
 }

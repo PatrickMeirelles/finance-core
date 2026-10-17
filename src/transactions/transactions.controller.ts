@@ -9,6 +9,7 @@ import {
   Query,
   UploadedFile,
   UseInterceptors,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TransactionsService } from './transactions.service';
@@ -68,27 +69,34 @@ export class TransactionsController {
   }
 
   @Get(':id')
-  findOne(@CurrentUser() currentUser: User, @Param('id') id: string) {
-    return this.transactionsService.findOne(currentUser.id, +id);
+  findOne(
+    @CurrentUser() currentUser: User,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.transactionsService.findOne(currentUser.id, id);
   }
 
+  /** Pass `?installmentGroupId=<uuid>` to update every installment at once. */
   @Patch(':id')
   update(
     @CurrentUser() currentUser: User,
-    @Param('id') id: string,
-    @Param('installmentGroupId') installmentGroupId: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Query('installmentGroupId') installmentGroupId: string | undefined,
     @Body() updateTransactionDto: UpdateTransactionDto,
   ) {
     return this.transactionsService.update(
       currentUser.id,
-      +id,
+      id,
       installmentGroupId,
       updateTransactionDto,
     );
   }
 
   @Delete(':installmentsGroupId')
-  remove(@Param('installmentsGroupId') installmentsGroupId: string) {
-    return this.transactionsService.remove(installmentsGroupId);
+  remove(
+    @CurrentUser() currentUser: User,
+    @Param('installmentsGroupId') installmentsGroupId: string,
+  ) {
+    return this.transactionsService.remove(currentUser.id, installmentsGroupId);
   }
 }

@@ -1,5 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
@@ -7,7 +13,7 @@ import { MoreThan, Repository, IsNull } from 'typeorm';
 import {
   hashPassword,
   comparePassword,
-  compareToken,
+  tokenHash,
 } from 'src/common/utils/hash.util';
 import { UserToken } from './entities/user.tokens.entity';
 import { LoginUserDto } from './dto/login-user-dto';
@@ -15,14 +21,26 @@ import { MailService } from 'src/mail/mail.service';
 import { resetPasswordTemplate } from '../mail/templates/reset-password.template';
 import { PasswordReset } from './entities/password-reset.entity';
 import * as crypto from 'crypto';
-import { createToken } from 'src/common/utils/jwt.util';
+import { createToken, verifyToken } from 'src/common/utils/jwt.util';
 import { JwtService } from '@nestjs/jwt';
 import { Account } from '../accounts/entities/account.entity';
 import { Category } from 'src/categories/entities/category.entity';
 import { defaultValues } from './common/default-initial-values';
+import {
+  INACTIVE_USER_MESSAGE,
+  INVALID_CREDENTIALS_MESSAGE,
+  INVALID_REFRESH_TOKEN_MESSAGE,
+  INVALID_TOKEN_MESSAGE,
+  PASSWORD_RESET_NEUTRAL_MESSAGE,
+  PASSWORD_RESET_TOKEN_BYTES,
+  PASSWORD_RESET_TTL_MINUTES,
+} from 'src/common/constants/security.constants';
+import { ENV } from 'src/config/env.constants';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
@@ -36,6 +54,7 @@ export class UsersService {
     private categoryRepository: Repository<Category>,
     private mailService: MailService,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
 
   private async createDefaultData(userId: number) {
@@ -62,19 +81,19 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto) {
-    const hashedPassword = await hashPassword(dto.password);
     const checkUser = await this.userRepository.findOne({
       where: { email: dto.email },
     });
     if (checkUser) {
       throw new BadRequestException('Email already exists');
     }
+    const hashedPassword = await hashPassword(dto.password);
     const user = this.userRepository.create({
       name: dto.name,
       email: dto.email,
       password: hashedPassword,
       full_name: dto.fullName,
-      is_active: dto.isActive,
+      is_active: true,
     });
 
     const userCreated = await this.userRepository.save(user);
@@ -86,8 +105,7 @@ export class UsersService {
     );
 
     let hasToCreateDefaultData:
-      | { accounts: Account[]; categories: Category[] }
-      | undefined;
+      { accounts: Account[]; categories: Category[] } | undefined;
     if (dto.initializeWithDefaultData) {
       hasToCreateDefaultData = await this.createDefaultData(userCreated.id);
     }
@@ -104,18 +122,25 @@ export class UsersService {
   }
 
   async login(dto: LoginUserDto) {
-    const user = await this.userRepository.findOne({
-      where: { email: dto.email },
-    });
+    // `password` is `select: false`, so it has to be asked for explicitly.
+    const user = await this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.email = :email', { email: dto.email })
+      .getOne();
 
     if (!user) {
-      throw new BadRequestException('Invalid email or password');
+      throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
     }
 
     const isMatch = await comparePassword(dto.password, user.password);
 
     if (!isMatch) {
-      throw new BadRequestException('Invalid email or password');
+      throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
+    }
+
+    if (!user.is_active) {
+      throw new UnauthorizedException(INACTIVE_USER_MESSAGE);
     }
 
     const { accessToken, refreshToken } = await createToken(
@@ -136,18 +161,23 @@ export class UsersService {
     };
   }
 
-  async getUserInformationByToken(token: string) {
+  /**
+   * Resolves the session behind an access token whose signature was already
+   * verified. The row lookup is what makes logout and refresh rotation
+   * effective before the token expires.
+   */
+  async getUserInformationByToken(token: string): Promise<User> {
     const userToken = await this.userTokenRepository.findOne({
       where: {
-        access_token: token,
+        access_token_hash: tokenHash(token),
         is_active: true,
         expires_at_access_token: MoreThan(new Date()),
       },
       relations: ['user'],
     });
 
-    if (!userToken) {
-      throw new BadRequestException('Invalid token');
+    if (!userToken || !userToken.user.is_active) {
+      throw new UnauthorizedException(INVALID_TOKEN_MESSAGE);
     }
 
     return userToken.user;
@@ -163,34 +193,31 @@ export class UsersService {
 
   async update(id: number, updateUserDto: UpdateUserDto) {
     await this.userRepository.update(id, {
-      name: updateUserDto.name,
-      full_name: updateUserDto.fullName,
+      ...(updateUserDto.name !== undefined && { name: updateUserDto.name }),
+      ...(updateUserDto.fullName !== undefined && {
+        full_name: updateUserDto.fullName,
+      }),
     });
     return `User updated successfully`;
   }
 
   async refresh(refreshToken: string) {
-    const tokens = await this.userTokenRepository.find({
+    const payload = await verifyToken(this.jwtService, refreshToken, 'refresh');
+    if (!payload) {
+      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+    }
+
+    const validToken = await this.userTokenRepository.findOne({
       where: {
+        refresh_token_hash: tokenHash(refreshToken),
         is_active: true,
         expires_at_refresh_token: MoreThan(new Date()),
       },
       relations: ['user'],
     });
 
-    let validToken: UserToken | null = null;
-
-    for (const token of tokens) {
-      const isMatch = await compareToken(refreshToken, token.refresh_token);
-
-      if (isMatch) {
-        validToken = token;
-        break;
-      }
-    }
-
-    if (!validToken) {
-      throw new BadRequestException('Invalid refresh token');
+    if (!validToken || !validToken.user.is_active) {
+      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
     }
 
     const { accessToken, refreshToken: newRefreshToken } = await createToken(
@@ -206,59 +233,65 @@ export class UsersService {
     };
   }
 
+  /**
+   * Always answers the same way so the endpoint cannot be used to discover
+   * which e-mails are registered.
+   */
   async forgotPassword(email: string) {
+    const neutral = { message: PASSWORD_RESET_NEUTRAL_MESSAGE };
+
     const user = await this.userRepository.findOne({
-      where: { email },
+      where: { email, is_active: true },
     });
 
     if (!user) {
-      throw new BadRequestException('Email not found');
+      return neutral;
     }
 
-    const token = crypto.randomBytes(32).toString('hex');
-
-    const hashedToken = await hashPassword(token);
+    const token = crypto
+      .randomBytes(PASSWORD_RESET_TOKEN_BYTES)
+      .toString('hex');
 
     const expires = new Date();
-    expires.setMinutes(expires.getMinutes() + 15);
+    expires.setMinutes(expires.getMinutes() + PASSWORD_RESET_TTL_MINUTES);
 
     const reset = this.passwordResetRepository.create({
       user_id: user.id,
-      token_hash: hashedToken,
+      token_hash: tokenHash(token),
       expires_at: expires,
     });
 
     await this.passwordResetRepository.save(reset);
 
-    const resetLink = `http://localhost:3000/reset-password?token=${token}`;
+    const resetBaseUrl = this.configService.get<string>(ENV.passwordResetUrl);
+    const html = resetPasswordTemplate({
+      token,
+      resetLink: resetBaseUrl
+        ? `${resetBaseUrl}?token=${encodeURIComponent(token)}`
+        : undefined,
+      expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
+    });
 
-    const html = resetPasswordTemplate(resetLink);
+    try {
+      await this.mailService.sendMail(user.email, 'Reset password', html);
+    } catch (error) {
+      // A mail outage must not reveal that the address exists.
+      this.logger.error(
+        `Could not send the password reset e-mail: ${(error as Error).message}`,
+      );
+    }
 
-    await this.mailService.sendMail(user.email, 'Reset password', html);
-
-    return {
-      message: 'Password reset email sent',
-    };
+    return neutral;
   }
 
   async resetPassword(token: string, newPassword: string) {
-    const resets = await this.passwordResetRepository.find({
+    const validReset = await this.passwordResetRepository.findOne({
       where: {
+        token_hash: tokenHash(token),
         expires_at: MoreThan(new Date()),
         used_at: IsNull(),
       },
     });
-
-    let validReset: PasswordReset | null = null;
-
-    for (const reset of resets) {
-      const isMatch = await compareToken(token, reset.token_hash);
-
-      if (isMatch) {
-        validReset = reset;
-        break;
-      }
-    }
 
     if (!validReset) {
       throw new BadRequestException('Invalid or expired token');
@@ -272,12 +305,11 @@ export class UsersService {
       throw new BadRequestException('User not found');
     }
 
-    const hashedPassword = await hashPassword(newPassword);
-
-    user.password = hashedPassword;
+    user.password = await hashPassword(newPassword);
 
     await this.userRepository.save(user);
 
+    // Every open session is closed when the password changes.
     await this.userTokenRepository.update(
       { user_id: user.id },
       { is_active: false },

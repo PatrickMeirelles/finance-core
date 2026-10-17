@@ -1,4 +1,15 @@
-import { Length, IsEmail, IsNotEmpty, IsStrongPassword } from 'class-validator';
+import {
+  Length,
+  IsEmail,
+  IsNotEmpty,
+  IsStrongPassword,
+  IsOptional,
+  IsBoolean,
+} from 'class-validator';
+import {
+  PASSWORD_POLICY,
+  PASSWORD_POLICY_MESSAGE,
+} from 'src/common/constants/security.constants';
 
 export class CreateUserDto {
   @IsNotEmpty()
@@ -9,25 +20,15 @@ export class CreateUserDto {
   email: string;
 
   @IsNotEmpty()
-  @IsStrongPassword(
-    {
-      minLength: 8,
-      minLowercase: 1,
-      minUppercase: 1,
-      minNumbers: 1,
-      minSymbols: 1,
-    },
-    {
-      message:
-        'Password must be at least 8 characters long and include uppercase letters, lowercase letters, numbers, and symbols.',
-    },
-  )
+  @IsStrongPassword(PASSWORD_POLICY, { message: PASSWORD_POLICY_MESSAGE })
   password: string;
 
   @IsNotEmpty()
   @Length(3, 50)
   fullName: string;
 
-  isActive: boolean;
-  initializeWithDefaultData: boolean;
+  /** Seeds the default wallet account and categories for the new user. */
+  @IsOptional()
+  @IsBoolean()
+  initializeWithDefaultData?: boolean;
 }
