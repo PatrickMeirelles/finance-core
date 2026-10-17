@@ -117,10 +117,13 @@ Medidas ativas na API (todas cobertas por testes unitários):
 
 ## Deploy gratuito: Vercel + Neon
 
-1. **Banco (Neon)**: crie um projeto Postgres gratuito e copie a connection string (`postgresql://...sslmode=require`).
+1. **Banco (Neon)**: crie um projeto Postgres gratuito e um **banco dedicado** para a API (`neonctl databases create --name xpen6 ...`). A migration inicial cria todas as tabelas e falha se o banco já tiver uma tabela `users` de outro uso. Copie a connection string (`postgresql://...sslmode=require`).
 2. **API (Vercel)**: no diretório do projeto, `npx vercel link` e depois configure as variáveis no projeto (`vercel env add` ou painel): `NODE_ENV=production`, `JWT_SECRET`, `DATABASE_URL`, `SMTP_*`, `MAIL_FROM`, opcionalmente `CORS_ORIGINS` e `PASSWORD_RESET_URL`. Defina também `NODEJS_HELPERS=0` para que o corpo das requisições (JSON e multipart) chegue intacto ao Express.
 3. `npx vercel --prod`. O `vercel.json` roda `pnpm build` e expõe `api/index.js`, que inicializa o NestJS uma vez por instância (`src/serverless.ts`). As migrations são aplicadas no primeiro boot.
-4. Teste: `curl https://<projeto>.vercel.app/health`.
+4. Desative a **Deployment Protection** do projeto (Settings > Deployment Protection, ou `PATCH /v9/projects/<id>` com `ssoProtection: null`); por padrão a Vercel exige login para acessar deployments novos, o que bloquearia o app.
+5. Teste: `curl https://<projeto>.vercel.app/health`.
+
+Instância atual: <https://finance-core-lyart.vercel.app> (projeto `finance-core` na Vercel, banco `xpen6` no Neon).
 
 Limites do plano gratuito que importam aqui: funções com até 30 s de execução (configurado em `vercel.json`) e corpo de requisição de 4,5 MB (o limite de upload do extrato é 5 MB; arquivos acima de 4,5 MB falham na Vercel). O throttling é por instância, portanto é um limite aproximado nesse modelo; para algo mais rígido use o WAF/rate limit da própria Vercel.
 
