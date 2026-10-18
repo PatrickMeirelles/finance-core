@@ -8,6 +8,10 @@ type AccountBalanceRaw = {
   balance: string;
 };
 
+/**
+ * The query alias is `tx` instead of `transaction`: TRANSACTION is a reserved
+ * word in SQLite and breaks the raw SELECT expressions below in development.
+ */
 @Injectable()
 export class AccountBalanceService {
   constructor(
@@ -17,22 +21,23 @@ export class AccountBalanceService {
 
   async getBalanceByAccountIds(accountIds: number[]) {
     const balances = await this.transactionRepository
-      .createQueryBuilder('transaction')
-      .select('transaction.account_id', 'accountId')
+      .createQueryBuilder('tx')
+      .select('tx.account_id', 'accountId')
       .addSelect(
         `
         COALESCE(SUM(
           CASE 
-            WHEN transaction.type = 'income' THEN transaction.value
-            WHEN transaction.type = 'expensive' THEN -transaction.value
+            WHEN tx.type = 'income' THEN tx.value
+            WHEN tx.type = 'expensive' THEN -tx.value
             ELSE 0
           END
         ),0)
         `,
         'balance',
       )
-      .where('transaction.account_id IN (:...accountIds)', { accountIds })
-      .groupBy('transaction.account_id')
+      .where('tx.account_id IN (:...accountIds)', { accountIds })
+      .andWhere('tx.is_active = :isActive', { isActive: true })
+      .groupBy('tx.account_id')
       .getRawMany<AccountBalanceRaw>();
 
     const map = new Map<number, number>();
@@ -46,20 +51,21 @@ export class AccountBalanceService {
 
   async getBalanceByAccountId(accountId: number) {
     const balance = await this.transactionRepository
-      .createQueryBuilder('transaction')
+      .createQueryBuilder('tx')
       .select(
         `
         COALESCE(SUM(
           CASE 
-            WHEN transaction.type = 'income' THEN transaction.value
-            WHEN transaction.type = 'expensive' THEN -transaction.value
+            WHEN tx.type = 'income' THEN tx.value
+            WHEN tx.type = 'expensive' THEN -tx.value
             ELSE 0
           END
         ),0)
         `,
         'balance',
       )
-      .where('transaction.account_id = :accountId', { accountId })
+      .where('tx.account_id = :accountId', { accountId })
+      .andWhere('tx.is_active = :isActive', { isActive: true })
       .getRawOne<{ balance: string }>();
 
     return Number(balance?.balance ?? 0);

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, MoreThanOrEqual, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Category } from 'src/categories/entities/category.entity';
 import { Account } from 'src/accounts/entities/account.entity';
@@ -9,6 +9,7 @@ import { Transaction } from './entities/transaction.entity';
 import { TransactionValidator } from './validations/transaction.validator';
 import { TransactionMapper } from './mappers/transaction.mapper';
 import { runInTransaction } from 'src/common/utils/transaction.util';
+import { pessimisticWriteLock } from 'src/common/utils/lock.util';
 import { IncomeExpensive } from 'src/common/enums/income-expensive.enum';
 import { randomUUID } from 'node:crypto';
 import { generateInstallments } from 'src/common/utils/installment.util';
@@ -18,6 +19,22 @@ import { getPagination } from 'src/common/utils/pagination.util';
 import { applyTransactionFilters } from 'src/common/utils/transaction-filters.util';
 import { applyTransactionSort } from './utils/sort.util';
 import { getTransactionSummary } from './utils/transaction-summary.util';
+import { ImportTransactionsDto } from './dto/import-transactions.dto';
+import { GetInsightsDto } from './dto/get-insights.dto';
+import { TransactionStatus } from './entities/enum/transactions-status.enum';
+import { parseStatementFile } from './parsers/statement-parser';
+import { ParsedStatementRow } from './parsers/statement-parser.types';
+import {
+  DEFAULT_IMPORT_DESCRIPTION,
+  IMPORT_DESCRIPTION_MAX_LENGTH,
+} from './constants/import.constants';
+import {
+  buildCategoryBreakdown,
+  buildMonthlySeries,
+  InsightsResponse,
+  startOfMonthUtc,
+  summarize,
+} from './utils/insights.util';
 
 @Injectable()
 export class TransactionsService {
@@ -38,9 +55,11 @@ export class TransactionsService {
       const transactionRepository =
         queryRunner.manager.getRepository(Transaction);
 
+      // Both accounts must belong to the caller; ids from other users are
+      // treated exactly like ids that do not exist.
       const account = await accountRepository.findOne({
-        where: { id: dto.accountId },
-        lock: { mode: 'pessimistic_write' },
+        where: { id: dto.accountId, user_id: userId, is_active: true },
+        ...pessimisticWriteLock<Account>(this.dataSource),
       });
 
       if (!account) {
@@ -48,10 +67,17 @@ export class TransactionsService {
       }
 
       if (dto.type === IncomeExpensive.TRANSFER && dto.destinationAcccountId) {
-        await accountRepository.findOne({
-          where: { id: dto.destinationAcccountId },
-          lock: { mode: 'pessimistic_write' },
+        const destination = await accountRepository.findOne({
+          where: {
+            id: dto.destinationAcccountId,
+            user_id: userId,
+            is_active: true,
+          },
+          ...pessimisticWriteLock<Account>(this.dataSource),
         });
+        if (!destination) {
+          throw new BadRequestException('Destination account not found');
+        }
       }
 
       const groupId = randomUUID();
@@ -73,7 +99,7 @@ export class TransactionsService {
               ...dto,
               ...installment,
               installmentsGroupId: groupId,
-            } as CreateTransactionDto),
+            }),
           ),
         );
       } else {
@@ -82,7 +108,7 @@ export class TransactionsService {
             TransactionMapper.toEntity(userId, {
               ...dto,
               installmentsGroupId: groupId,
-            } as CreateTransactionDto),
+            }),
           ),
         );
       }
@@ -113,7 +139,8 @@ export class TransactionsService {
       .createQueryBuilder('transaction')
       .leftJoinAndSelect('transaction.account', 'account')
       .leftJoinAndSelect('transaction.category', 'category')
-      .where('transaction.user_id = :userId', { userId: currentUser.id });
+      .where('transaction.user_id = :userId', { userId: currentUser.id })
+      .andWhere('transaction.is_active = :isActive', { isActive: true });
 
     applyTransactionFilters(query, filters);
 
@@ -173,9 +200,15 @@ export class TransactionsService {
           is_active: true,
         };
 
+    await this.assertOwnedTargets(
+      userId,
+      updateTransactionDto.accountId,
+      updateTransactionDto.categoryId,
+    );
+
     const result = await this.transactionRepository.update(
       whereCondition,
-      updateTransactionDto,
+      TransactionMapper.toUpdateColumns(updateTransactionDto),
     );
 
     if (!result.affected) {
@@ -191,15 +224,190 @@ export class TransactionsService {
     };
   }
 
-  async remove(installmentsGroupId: string) {
-    const findTransactions = await this.transactionRepository.find({
-      where: { installments_group_id: installmentsGroupId, is_active: true },
+  /** Account and category used by an update must belong to the caller. */
+  private async assertOwnedTargets(
+    userId: number,
+    accountId: number,
+    categoryId: number,
+  ) {
+    const [account, category] = await Promise.all([
+      this.accountRepository.findOne({
+        where: { id: accountId, user_id: userId, is_active: true },
+      }),
+      this.categoryRepository.findOne({
+        where: { id: categoryId, user_id: userId, is_active: true },
+      }),
+    ]);
+    if (!account) {
+      throw new BadRequestException('Account not found');
+    }
+    if (!category) {
+      throw new BadRequestException('Category not found');
+    }
+  }
+
+  private async assertImportTargets(
+    userId: number,
+    dto: ImportTransactionsDto,
+  ) {
+    const account = await this.accountRepository.findOne({
+      where: { id: dto.accountId, user_id: userId, is_active: true },
     });
-    if (!findTransactions) {
+    if (!account) {
+      throw new BadRequestException('Account not found');
+    }
+
+    const [expenseCategory, incomeCategory] = await Promise.all([
+      this.categoryRepository.findOne({
+        where: {
+          id: dto.expenseCategoryId,
+          user_id: userId,
+          is_active: true,
+          type: IncomeExpensive.EXPENSIVE,
+        },
+      }),
+      this.categoryRepository.findOne({
+        where: {
+          id: dto.incomeCategoryId,
+          user_id: userId,
+          is_active: true,
+          type: IncomeExpensive.INCOME,
+        },
+      }),
+    ]);
+    if (!expenseCategory) {
+      throw new BadRequestException('Expense category not found');
+    }
+    if (!incomeCategory) {
+      throw new BadRequestException('Income category not found');
+    }
+  }
+
+  private rowToTransaction(
+    userId: number,
+    dto: ImportTransactionsDto,
+    row: ParsedStatementRow,
+  ): Partial<Transaction> {
+    const isExpense = row.amountInCents < 0;
+    const description = row.description.trim() || DEFAULT_IMPORT_DESCRIPTION;
+    return {
+      user_id: userId,
+      account_id: dto.accountId,
+      category_id: isExpense ? dto.expenseCategoryId : dto.incomeCategoryId,
+      type: isExpense ? IncomeExpensive.EXPENSIVE : IncomeExpensive.INCOME,
+      status: TransactionStatus.COMPLETED,
+      value: Math.abs(row.amountInCents),
+      description: description.slice(0, IMPORT_DESCRIPTION_MAX_LENGTH),
+      transaction_date: row.date,
+      installment: 1,
+      amount_installments: 1,
+      installments_group_id: randomUUID(),
+    };
+  }
+
+  async importStatement(
+    userId: number,
+    dto: ImportTransactionsDto,
+    file: Express.Multer.File | undefined,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Statement file is required');
+    }
+
+    await this.assertImportTargets(userId, dto);
+
+    const parsed = parseStatementFile(
+      file.originalname,
+      file.buffer.toString('utf8'),
+    );
+
+    if (parsed.rows.length === 0) {
+      throw new BadRequestException('No transactions found in the file');
+    }
+
+    const saved = await runInTransaction(this.dataSource, (queryRunner) => {
+      const repository = queryRunner.manager.getRepository(Transaction);
+      const entities = parsed.rows.map((row) =>
+        repository.create(this.rowToTransaction(userId, dto, row)),
+      );
+      return repository.save(entities);
+    });
+
+    return {
+      message: `Imported ${saved.length} transactions`,
+      data: {
+        imported: saved.length,
+        skipped: parsed.skipped,
+        transactions: saved,
+      },
+    };
+  }
+
+  async getInsights(
+    userId: number,
+    dto: GetInsightsDto,
+  ): Promise<{ data: InsightsResponse }> {
+    const now = new Date();
+    const currentMonthStart = startOfMonthUtc(now);
+    const periodStart = startOfMonthUtc(now, -(dto.months - 1));
+    const previousPeriodStart = startOfMonthUtc(now, -(2 * dto.months - 1));
+    const previousMonthStart = startOfMonthUtc(now, -1);
+
+    const transactions = await this.transactionRepository.find({
+      where: {
+        user_id: userId,
+        is_active: true,
+        transaction_date: MoreThanOrEqual(previousPeriodStart),
+      },
+      relations: ['category'],
+      order: { transaction_date: 'ASC' },
+    });
+
+    const inRange = (from: Date, to?: Date) =>
+      transactions.filter((transaction) => {
+        const date = new Date(transaction.transaction_date);
+        return date >= from && (!to || date < to);
+      });
+
+    const periodTransactions = inRange(periodStart);
+    const currentMonthTransactions = inRange(currentMonthStart);
+
+    return {
+      data: {
+        period: {
+          months: dto.months,
+          startDate: periodStart.toISOString(),
+          endDate: now.toISOString(),
+        },
+        totals: summarize(periodTransactions),
+        previousPeriod: summarize(inRange(previousPeriodStart, periodStart)),
+        currentMonth: summarize(currentMonthTransactions),
+        previousMonth: summarize(
+          inRange(previousMonthStart, currentMonthStart),
+        ),
+        monthly: buildMonthlySeries(
+          periodTransactions,
+          periodStart,
+          dto.months,
+        ),
+        byCategory: buildCategoryBreakdown(currentMonthTransactions),
+      },
+    };
+  }
+
+  async remove(userId: number, installmentsGroupId: string) {
+    const findTransactions = await this.transactionRepository.find({
+      where: {
+        installments_group_id: installmentsGroupId,
+        user_id: userId,
+        is_active: true,
+      },
+    });
+    if (findTransactions.length === 0) {
       throw new BadRequestException('Transactions not found');
     }
     await this.transactionRepository.update(
-      { installments_group_id: installmentsGroupId },
+      { installments_group_id: installmentsGroupId, user_id: userId },
       {
         is_active: false,
       },

@@ -19,7 +19,8 @@ export async function getTransactionSummary(
       `SUM(CASE WHEN transaction.type = 'income' THEN transaction.value ELSE 0 END) as income`,
       `SUM(CASE WHEN transaction.type = 'expensive' THEN transaction.value ELSE 0 END) as expense`,
     ])
-    .where('transaction.user_id = :userId', { userId });
+    .where('transaction.user_id = :userId', { userId })
+    .andWhere('transaction.is_active = :isActive', { isActive: true });
 
   applyTransactionFilters(query, filters);
 
