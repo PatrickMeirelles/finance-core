@@ -194,7 +194,13 @@ Campos do `multipart/form-data`:
 - `expenseCategoryId`: categoria (tipo `expensive`) usada nos valores negativos
 - `incomeCategoryId`: categoria (tipo `income`) usada nos valores positivos
 
-CSV: a primeira linha é o cabeçalho e precisa ter uma coluna de data (`date`, `data`) e uma de valor (`amount`, `value`, `valor`); a coluna de descrição (`description`, `descricao`, `memo`, `historico`) é opcional. Separador `,`, `;` ou tab; datas `YYYY-MM-DD` ou `DD/MM/YYYY`; decimais com ponto ou vírgula. OFX: aceita SGML (1.x) e XML (2.x), lendo `DTPOSTED`, `TRNAMT`, `MEMO`/`NAME` e `FITID`.
+CSV: a primeira linha é o cabeçalho (unidades entre parênteses são ignoradas, ex.: `Valor (R$)`) e precisa ter uma coluna de data (`date`, `data`, `data lançamento`) e o valor em um destes formatos:
+
+- uma coluna de valor (`amount`, `value`, `valor`, `quantia`) com sinal: `-50,00`, `50,00-`, `(50,00)`, `−50,00` ou com marcador `D`/`C` (`50,00 D`, `C 2.000,00`) são aceitos; `+` ou sem sinal é entrada;
+- ou uma coluna de valor sem sinal mais uma coluna de tipo (`tipo`, `type`, `d/c`, `natureza`) com `D`/`Débito`/`Saída` para saída e `C`/`Crédito`/`Entrada` para entrada;
+- ou duas colunas, `débito`/`saída` e `crédito`/`entrada`.
+
+A coluna de descrição (`description`, `descricao`, `memo`, `historico`, `lançamento`) é opcional. Separador `,`, `;` ou tab; datas `YYYY-MM-DD` ou `DD/MM/YYYY`; decimais com ponto ou vírgula; `R$`/`BRL` são ignorados. OFX: aceita SGML (1.x) e XML (2.x), lendo `DTPOSTED`, `TRNAMT`, `TRNTYPE` (decide a direção quando o banco exporta valores sem sinal), `MEMO`/`NAME` e `FITID`.
 
 Exemplo:
 

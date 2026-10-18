@@ -1,17 +1,37 @@
 import {
   CENTS_PER_UNIT,
+  CREDIT_MARKERS,
   CSV_AMOUNT_HEADERS,
+  CSV_CREDIT_HEADERS,
   CSV_DATE_HEADERS,
+  CSV_DEBIT_HEADERS,
   CSV_DELIMITERS,
   CSV_DESCRIPTION_HEADERS,
+  CSV_TYPE_HEADERS,
+  DEBIT_MARKERS,
 } from '../constants/import.constants';
 import { ParsedStatement, ParsedStatementRow } from './statement-parser.types';
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
 const BR_DATE = /^(\d{2})\/(\d{2})\/(\d{4})/;
 
+/** Minus signs banks like to use instead of the ASCII hyphen. */
+const DASHES = /[‐-―−]/g;
+/** "R$", "BRL", "US$", "$", "€"... anywhere around the number. */
+const CURRENCY = /(?:r\$|us\$|brl|usd|eur|[$€£])/gi;
+/** A debit/credit letter or word glued to the amount: "12,50 D", "C 12,50", "12,50-DB". */
+const MARKER_PREFIX = /^([a-zà-ú]{1,7})\b[\s:.-]*(?=[-+(]?\s*\d)/i;
+const MARKER_SUFFIX = /(?<=\d[.,)]?)[\s-]*\b([a-zà-ú]{1,7})$/i;
+
+export type Direction = 'debit' | 'credit' | null;
+
 function normalizeHeader(header: string) {
-  return header.trim().toLowerCase().replace(/^"|"$/g, '');
+  return header
+    .trim()
+    .toLowerCase()
+    .replace(/^"|"$/g, '')
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .trim();
 }
 
 function detectDelimiter(headerLine: string): string {
@@ -68,37 +88,118 @@ export function parseStatementDate(raw: string): Date | null {
   return null;
 }
 
-/**
- * Accepts "1234.56", "-1234,56", "1.234,56", "R$ 1.234,56" and "(12.50)".
- */
-export function parseAmountToCents(raw: string): number | null {
-  let value = raw.trim();
+/** Maps "D", "débito", "saída", "DEBIT"... to a direction; null when unknown. */
+export function directionOf(raw: string | undefined): Direction {
+  const value = (raw ?? '').trim().toLowerCase();
   if (!value) {
     return null;
   }
+  if (DEBIT_MARKERS.includes(value)) {
+    return 'debit';
+  }
+  if (CREDIT_MARKERS.includes(value)) {
+    return 'credit';
+  }
+  return null;
+}
+
+/**
+ * Accepts "1234.56", "-1234,56", "1.234,56", "R$ 1.234,56", "(12.50)",
+ * "12,50-" (trailing minus), "−12,50" (unicode minus), "12,50 D" / "C 12,50"
+ * (debit/credit letters) and "+12,50". Negative means money out.
+ */
+export function parseAmountToCents(raw: string): number | null {
+  let value = raw.trim().replace(DASHES, '-').replace(CURRENCY, '').trim();
+  if (!value) {
+    return null;
+  }
+
+  let direction: Direction = null;
+  const prefix = MARKER_PREFIX.exec(value);
+  if (prefix && directionOf(prefix[1])) {
+    direction = directionOf(prefix[1]);
+    value = value.slice(prefix[0].length).trim();
+  }
+  const suffix = MARKER_SUFFIX.exec(value);
+  if (suffix && directionOf(suffix[1])) {
+    direction = directionOf(suffix[1]);
+    value = value.slice(0, suffix.index).trim();
+  }
+
   const negativeByParentheses = /^\(.*\)$/.test(value);
-  value = value.replace(/[^0-9,.-]/g, '');
-  if (!/\d/.test(value)) {
+  const negativeBySign = /^-|-$/.test(value.replace(/[\s()]/g, ''));
+  const digits = value.replace(/[^0-9,.]/g, '');
+  if (!/\d/.test(digits)) {
     return null;
   }
-  const lastComma = value.lastIndexOf(',');
-  const lastDot = value.lastIndexOf('.');
-  if (lastComma > lastDot) {
-    value = value.replace(/\./g, '').replace(',', '.');
-  } else {
-    value = value.replace(/,/g, '');
-  }
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
+
+  const lastComma = digits.lastIndexOf(',');
+  const lastDot = digits.lastIndexOf('.');
+  const normalized =
+    lastComma > lastDot
+      ? digits.replace(/\./g, '').replace(',', '.')
+      : digits.replace(/,/g, '');
+  const magnitude = Number(normalized);
+  if (!Number.isFinite(magnitude)) {
     return null;
   }
-  const cents = Math.round(parsed * CENTS_PER_UNIT);
-  return negativeByParentheses ? -Math.abs(cents) : cents;
+
+  const cents = Math.abs(Math.round(magnitude * CENTS_PER_UNIT));
+  if (direction === 'debit' || negativeByParentheses || negativeBySign) {
+    return -cents;
+  }
+  return cents;
+}
+
+/** Applies a direction read elsewhere (type column, OFX TRNTYPE) to an amount. */
+export function applyDirection(
+  amountInCents: number,
+  direction: Direction,
+): number {
+  if (direction === 'debit') {
+    return -Math.abs(amountInCents);
+  }
+  if (direction === 'credit') {
+    return Math.abs(amountInCents);
+  }
+  return amountInCents;
+}
+
+type Columns = {
+  date: number;
+  description: number;
+  amount: number;
+  debit: number;
+  credit: number;
+  type: number;
+};
+
+function readAmount(cells: string[], columns: Columns): number | null {
+  if (columns.amount !== -1) {
+    const amount = parseAmountToCents(cells[columns.amount] ?? '');
+    if (amount === null) {
+      return null;
+    }
+    return applyDirection(
+      amount,
+      columns.type === -1 ? null : directionOf(cells[columns.type]),
+    );
+  }
+  // Separate debit / credit columns: whichever is filled wins.
+  const debit = parseAmountToCents(cells[columns.debit] ?? '');
+  const credit = parseAmountToCents(cells[columns.credit] ?? '');
+  if (debit) {
+    return -Math.abs(debit);
+  }
+  if (credit) {
+    return Math.abs(credit);
+  }
+  return debit === null && credit === null ? null : 0;
 }
 
 export function parseCsvStatement(content: string): ParsedStatement {
   const lines = content
-    .replace(/^ /, '')
+    .replace(/^\uFEFF/, '')
     .split(/\r?\n/)
     .filter((line) => line.trim().length > 0);
 
@@ -108,13 +209,20 @@ export function parseCsvStatement(content: string): ParsedStatement {
 
   const delimiter = detectDelimiter(lines[0]);
   const headers = splitLine(lines[0], delimiter).map(normalizeHeader);
-  const dateIndex = findColumn(headers, CSV_DATE_HEADERS);
-  const descriptionIndex = findColumn(headers, CSV_DESCRIPTION_HEADERS);
-  const amountIndex = findColumn(headers, CSV_AMOUNT_HEADERS);
+  const columns: Columns = {
+    date: findColumn(headers, CSV_DATE_HEADERS),
+    description: findColumn(headers, CSV_DESCRIPTION_HEADERS),
+    amount: findColumn(headers, CSV_AMOUNT_HEADERS),
+    debit: findColumn(headers, CSV_DEBIT_HEADERS),
+    credit: findColumn(headers, CSV_CREDIT_HEADERS),
+    type: findColumn(headers, CSV_TYPE_HEADERS),
+  };
 
-  if (dateIndex === -1 || amountIndex === -1) {
+  const hasAmount =
+    columns.amount !== -1 || (columns.debit !== -1 && columns.credit !== -1);
+  if (columns.date === -1 || !hasAmount) {
     throw new Error(
-      'CSV header must contain a date column and an amount column',
+      'CSV header must contain a date column and an amount column (or debit and credit columns)',
     );
   }
 
@@ -123,8 +231,8 @@ export function parseCsvStatement(content: string): ParsedStatement {
 
   for (const line of lines.slice(1)) {
     const cells = splitLine(line, delimiter);
-    const date = parseStatementDate(cells[dateIndex] ?? '');
-    const amountInCents = parseAmountToCents(cells[amountIndex] ?? '');
+    const date = parseStatementDate(cells[columns.date] ?? '');
+    const amountInCents = readAmount(cells, columns);
     if (!date || amountInCents === null || amountInCents === 0) {
       skipped++;
       continue;
@@ -132,7 +240,7 @@ export function parseCsvStatement(content: string): ParsedStatement {
     rows.push({
       date,
       description:
-        descriptionIndex === -1 ? '' : (cells[descriptionIndex] ?? ''),
+        columns.description === -1 ? '' : (cells[columns.description] ?? ''),
       amountInCents,
     });
   }

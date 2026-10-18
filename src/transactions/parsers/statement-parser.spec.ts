@@ -13,8 +13,71 @@ describe('statement parsers', () => {
       ['(12.50)', -1250],
       ['abc', null],
       ['', null],
+      ['12,50-', -1250],
+      ['1.234,56-', -123456],
+      ['\u221212,50', -1250],
+      ['R$ -12,50', -1250],
+      ['-R$ 12,50', -1250],
+      ['+12,50', 1250],
+      ['12,50 D', -1250],
+      ['12,50 C', 1250],
+      ['D 12,50', -1250],
+      ['C 12,50', 1250],
+      ['12,50 DB', -1250],
+      ['12,50 CR', 1250],
+      ['R$ 12,50 Débito', -1250],
+      ['BRL 2.000,00', 200000],
     ])('parses %p as %p', (raw, expected) => {
       expect(parseAmountToCents(raw)).toBe(expected);
+    });
+  });
+
+  describe('direction markers and column layouts', () => {
+    it('uses a type column to decide the sign when amounts are unsigned', () => {
+      const result = parseCsvStatement(
+        'Data;Histórico;Valor;Tipo\n01/10/2026;Mercado;50,00;D\n05/10/2026;Salário;2000,00;C\n06/10/2026;Pix;30,00;Débito\n07/10/2026;Pix recebido;80,00;Crédito\n',
+      );
+      expect(result.rows.map((row) => row.amountInCents)).toEqual([
+        -5000, 200000, -3000, 8000,
+      ]);
+    });
+
+    it('keeps the explicit sign when the type column is unknown', () => {
+      const result = parseCsvStatement(
+        'data,descricao,valor,tipo\n2026-10-01,Mercado,-50.00,PIX\n2026-10-05,Salario,2000.00,TED\n',
+      );
+      expect(result.rows.map((row) => row.amountInCents)).toEqual([
+        -5000, 200000,
+      ]);
+    });
+
+    it('reads statements with separate debit and credit columns', () => {
+      const result = parseCsvStatement(
+        'Data;Lançamento;Débito;Crédito\n01/10/2026;Mercado;50,00;\n05/10/2026;Salário;;2.000,00\n06/10/2026;Zerado;;\n',
+      );
+      expect(result.skipped).toBe(1);
+      expect(result.rows.map((row) => row.amountInCents)).toEqual([
+        -5000, 200000,
+      ]);
+    });
+
+    it('accepts headers with units and a BOM', () => {
+      const result = parseCsvStatement(
+        '\uFEFF"Data";"Descrição";"Valor (R$)"\n"01/10/2026";"Mercado";"-50,00"\n',
+      );
+      expect(result.rows[0].amountInCents).toBe(-5000);
+    });
+
+    it('uses TRNTYPE when the OFX amount has no sign', () => {
+      const ofx = [
+        '<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261001<TRNAMT>50.00<FITID>1<MEMO>Mercado',
+        '<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261005<TRNAMT>2000.00<FITID>2<MEMO>Salario',
+        '<STMTTRN><TRNTYPE>PAYMENT<DTPOSTED>20261006<TRNAMT>-30.00<FITID>3<MEMO>Boleto',
+        '<STMTTRN><TRNTYPE>XFER<DTPOSTED>20261007<TRNAMT>-10.00<FITID>4<MEMO>Transf',
+      ].join('\n');
+      expect(
+        parseOfxStatement(ofx).rows.map((row) => row.amountInCents),
+      ).toEqual([-5000, 200000, -3000, -1000]);
     });
   });
 
